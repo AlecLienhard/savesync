@@ -240,7 +240,6 @@ When in doubt, add `-n` to see what would happen without changing anything.
 
 - "Newer wins" uses file dates, so keep the clocks on your machines roughly right (they are by default). Some plain WebDAV servers don't keep file dates. Nextcloud and ownCloud do.
 - Syncing is manual. On the Deck that means switching to Desktop Mode, or using the menu shortcuts.
-- To restore an overwritten save, copy it back from the backups folder.
 - To uninstall, delete `~/.local/bin/savesync`, `~/.config/savesync` and `~/.local/share/applications/savesync-*.desktop`.
 
 ## Development
