@@ -766,7 +766,7 @@ setup() {
     "# Any SAVESYNC_* setting from the top of savesync.sh can go here." > "$CONF_FILE"
 
   case "$(remote_get type)" in sftp) kind=2 ;; webdav) kind=3 ;; alias) kind=4 ;; *) kind=1 ;; esac
-  msg "How do you reach your NAS?"
+  msg "How do you reach your NAS?   (press Enter to keep the [value in brackets])"
   note "1) SMB / Windows share   TrueNAS, Synology, Unraid, QNAP, Windows, Samba"
   note "2) SFTP / SSH            any machine you can ssh into"
   note "3) WebDAV                Nextcloud, ownCloud, Synology/QNAP WebDAV"
@@ -807,10 +807,11 @@ setup() {
   SAVESYNC_HOST="$h"
   set_conf SAVESYNC_HOST "$h"
 
-  msg "Folders on the NAS"
+  msg "Folders on the NAS   (Enter = keep the [default])"
+  note "Paths on the NAS where savesync keeps its files. They're created if missing."
   [ "$kind" = 1 ] && note "For SMB the first part is the share name, e.g. emudeck or data/emudeck"
-  ask SAVESYNC_ROOT "Saves, states and BIOS go in" "$REMOTE_ROOT"
-  ask SAVESYNC_GAMES "Games (ROMs) go in" "$GAMES_SHARE_PATH"
+  ask SAVESYNC_ROOT "Folder for saves, states and BIOS" "$REMOTE_ROOT"
+  ask SAVESYNC_GAMES "Folder for games (ROMs)" "$GAMES_SHARE_PATH"
   SAVESYNC_ROOT="${SAVESYNC_ROOT%/}"; SAVESYNC_GAMES="${SAVESYNC_GAMES%/}"
   set_conf SAVESYNC_ROOT "$SAVESYNC_ROOT"
   set_conf SAVESYNC_GAMES "$SAVESYNC_GAMES"
@@ -827,10 +828,10 @@ setup() {
     fi
   done
 
-  msg "Emulation folder on this machine"
+  msg "Emulation folder on this machine   (Enter = use the one found)"
   auto="$(emudeck_dir || retrodeck_dir)" || auto=""
   resolve_layout 2>/dev/null || EMU="$auto"
-  ask path "EmuDeck's Emulation, RetroDECK's retrodeck, or your own" "$EMU"
+  ask path "Folder" "$EMU"
   path="${path/#\~/$HOME}"; path="${path%/}"
   if [ -n "$path" ] && [ "$path" != "$auto" ]; then
     set_conf SAVESYNC_EMU "$path"; SAVESYNC_EMU="$path"
