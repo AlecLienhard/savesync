@@ -828,9 +828,15 @@ setup() {
     fi
   done
 
-  msg "Emulation folder on this machine   (Enter = use the one found)"
+  msg "Where are your emulator files on this machine?"
   auto="$(emudeck_dir || retrodeck_dir)" || auto=""
   resolve_layout 2>/dev/null || EMU="$auto"
+  if [ -n "$EMU" ]; then
+    note "Found: $EMU"
+    note "Press Enter to use it, or type a different folder."
+  else
+    note "Couldn't find EmuDeck's Emulation or RetroDECK's retrodeck folder - type its path."
+  fi
   ask path "Folder" "$EMU"
   path="${path/#\~/$HOME}"; path="${path%/}"
   if [ -n "$path" ] && [ "$path" != "$auto" ]; then
