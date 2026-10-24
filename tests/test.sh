@@ -34,6 +34,15 @@ ss() {
   env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$h" NO_COLOR=1 bash "$SAVESYNC" "$@" < /dev/null 2>&1
 }
 
+# ss_tty <home> <typed input> <args...> - run savesync in a pseudo-terminal,
+# so its interactive prompts are used
+ss_tty() {
+  local h="$1" input="$2" cmd; shift 2
+  cmd="$(printf '%q ' bash "$SAVESYNC" "$@")"
+  printf '%b' "$input" | env -u XDG_CONFIG_HOME -u XDG_DATA_HOME HOME="$h" NO_COLOR=1 \
+    script -qec "$cmd" /dev/null 2>&1 | tr -d '\r'
+}
+
 # emudeck <home> - EmuDeck layout: saves/<emu>/<entry> are links to the real folders
 emudeck() {
   local h="$1" real="$1/.var/app/org.libretro.RetroArch/config/retroarch"
@@ -131,6 +140,32 @@ echo changed > "$PC/Emulation/roms/gba/Metroid Fusion.gba"
 ss "$PC" games pull gba -y >/dev/null
 check "whole-system pull"             test -f "$PC/Emulation/roms/gba/Zelda - Link to the Past.gba"
 check "games are never overwritten"   test "$(cat "$PC/Emulation/roms/gba/Metroid Fusion.gba")" = changed
+
+echo "== picking games from a list"
+P2="$(machine pc2)"; emudeck "$P2"
+echo cover > "$NAS/Games/gba/cover-front.jpg"
+out="$(ss "$P2" games list gba)"
+check "cover art is hidden"           lacks "$out" "cover-front"
+# NAS gba, sorted: 1 Advance Wars, 2 Metroid Fusion, 3 Zelda - Link.., 4 Zelda - Minish..
+out="$(ss_tty "$P2" '1 3\n' games pull gba)"
+check "list is numbered"              has "$out" "  4)"
+check "picked games are copied"       test -f "$P2/Emulation/roms/gba/Advance Wars.gba" -a -f "$P2/Emulation/roms/gba/Zelda - Link to the Past.gba"
+check "others are not"                test ! -e "$P2/Emulation/roms/gba/Metroid Fusion.gba" -a ! -e "$P2/Emulation/roms/gba/Zelda - Minish Cap.gba"
+out="$(ss_tty "$P2" '\n' games pull gba)"
+check "downloaded games aren't offered again" lacks "$out" "Advance Wars"
+check "Enter cancels"                 has "$out" "Cancelled"
+# left: 1 Metroid Fusion, 2 Zelda - Minish Cap
+out="$(ss_tty "$P2" '7\nfoo\n2\n' games pull gba)"
+check "bad picks are asked again"     has "$out" "Use numbers from the list"
+check "...then the pick is copied"    test -f "$P2/Emulation/roms/gba/Zelda - Minish Cap.gba"
+check "...and only that one"          test ! -e "$P2/Emulation/roms/gba/Metroid Fusion.gba"
+out="$(ss_tty "$P2" 'y\n' games pull gba)"
+check "a single game asks yes/no"     has "$out" "[y/N]"
+check "...and copies it"              test -f "$P2/Emulation/roms/gba/Metroid Fusion.gba"
+P3="$(machine pc3)"; emudeck "$P3"
+ss_tty "$P3" 'a\n' games pull gba >/dev/null
+check "a takes everything"            test "$(find "$P3/Emulation/roms/gba" -name '*.gba' | wc -l)" -eq 4
+rm "$NAS/Games/gba/cover-front.jpg"
 
 echo "== RetroDECK layout"
 RD1="$(machine rd1)"; RD2="$(machine rd2)"

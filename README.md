@@ -12,11 +12,15 @@ $ savesync push
 ==> Uploaded 2 file(s)  (1 new, 1 updated)
 ==> All done.
 
-$ savesync games pull gba zelda
-==> Download to /home/alien/Emulation/roms/gba:
-       7.9M  Zelda - Minish Cap.gba
-       1.0M  Zelda - Link to the Past.gba
-    Copy 2 item(s), 8.9M in total? [y/N] y
+$ savesync games pull wii
+==> wii games not on this machine yet:
+      1)    2.7G  Mario Kart Wii (USA) (En,Fr,Es).nkit.gcz
+      2)    1.3G  Super Mario Galaxy 2 (USA) (En,Fr,Es).nkit.iso
+      3)    3.3G  Super Mario Galaxy (USA) (En,Fr,Es).nkit.gcz
+      4)    6.7G  Super Smash Bros. Brawl (USA, Canada) (Rev 2).rvz
+    (1 more already there)
+    Which ones? (e.g. 2 5 7-9, a = all, Enter = cancel): 1 3
+==> Copying 2 item(s), 6G
 ```
 
 ## Why it's safe
@@ -64,16 +68,17 @@ The connection is stored in `~/.config/savesync/rclone.conf` (password obscured,
 | `savesync bios push` / `bios pull` | Copy BIOS files (only needed after adding new ones) |
 | `savesync games list` | List the systems on the NAS |
 | `savesync games list gba zelda` | List matching GBA games on the NAS (✓ = already on this machine) |
-| `savesync games pull gba zelda` | Download the matching games |
-| `savesync games pull gba` | Download every GBA game you don't already have |
+| `savesync games pull wii` | Pick games to download from a numbered list (`2 5 7-9`, `a` for all) |
+| `savesync games pull wii mario` | Same, but only games matching "mario" |
+| `savesync games pull wii -y` | Download every Wii game you don't already have, without asking |
 | `savesync games push` | Upload every game the NAS doesn't have yet (also just `savesync games`) |
 | `savesync games push gba advance` | Upload only the matching games |
 | `savesync recent [hours]` | Show save files changed here lately, to check the emulator actually saved |
 | `savesync config` | Show settings and test the connection |
 
-Flags: `-n` / `--dry-run` previews, `-y` / `--yes` skips the confirmation before games are copied.
+Flags: `-n` / `--dry-run` previews, `-y` / `--yes` skips the questions and takes every matching game.
 
-**Searching games:** a game is any file or folder directly inside a system folder. The search matches names that contain every word you type, in any case. Multi-file games (`.cue` + `.bin`, `.m3u` + discs) come along together because their names share the title. Games are never overwritten.
+**Searching games:** a game is any file or folder directly inside a system folder. The search matches names that contain every word you type, in any case. Multi-file games (`.cue` + `.bin`, `.m3u` + discs) come along together because their names share the title. Games already on the destination aren't offered again, cover images are left out of lists, downloads check for free disk space first, and games are never overwritten.
 
 ### A typical day
 
@@ -83,7 +88,7 @@ savesync push
 
 # on the PC, before playing:
 savesync pull
-savesync games pull psx "final fantasy"
+savesync games pull psx           # pick what to take along for offline play
 ```
 
 ## How it works

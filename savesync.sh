@@ -10,14 +10,14 @@
 #   savesync sync                  push, then pull (newest copy of every file wins)
 #   savesync bios push|pull        copy BIOS files (only needed when you add new ones)
 #   savesync games list [system] [search]   browse the games on the NAS
-#   savesync games pull <system> [search]   download games to this machine
+#   savesync games pull <system> [search]   pick games to download from a list
 #   savesync games push [system] [search]   upload games the NAS doesn't have yet
 #   savesync recent [hours]        list save files changed here lately (default 24h)
 #   savesync config                show the settings in use and test the connection
 #   savesync install               copy savesync to ~/.local/bin (+ menu shortcuts)
 #
 #   -n, --dry-run   preview any command without changing anything
-#   -y, --yes       don't ask before transferring games
+#   -y, --yes       don't ask - take every matching game
 #   -V, --version   show the version
 #
 # Files that are identical on both sides are never re-sent, even if their dates
@@ -84,6 +84,7 @@ RCLONE=""
 EMU=""
 LAYOUT=""
 SAVE_DIRS=()
+PICKED=()
 BIOS_DIR=""
 ROMS_DIR=""
 NET=(--contimeout 5s --timeout 20s)
@@ -515,7 +516,10 @@ entries() {
     find "$ROMS_DIR/$sys/" -mindepth 1 -maxdepth 1 \
       \( -type d -printf '-1\t%f/\n' \) -o \( -type f -printf '%s\t%f\n' \) 2>/dev/null
   fi | sort -f -t $'\t' -k2 | while IFS=$'\t' read -r size name; do
-    case "$name" in .*|systeminfo.txt|metadata.txt) continue ;; esac   # EmuDeck's own files
+    case "${name,,}" in
+      .*|systeminfo.txt|metadata.txt) continue ;;            # EmuDeck's own files
+      *.jpg|*.jpeg|*.png|*.webp|*.gif) continue ;;           # cover art
+    esac
     if matches "$name" "$@"; then printf '%s\t%s\n' "$size" "$name"; fi
   done
 }
@@ -586,14 +590,45 @@ games_list() {
   [ "$n" -gt 0 ] || note "(nothing found - see the systems with: savesync games list)"
 }
 
+# pick <count> - asks which of a numbered list to take (e.g. "2 5 7-9" or "a"
+# for all) and fills PICKED with their 0-based indexes
+pick() {
+  local n="$1" ans tok a b i ok
+  declare -A seen=()
+  while :; do
+    read -rp "    Which ones? (e.g. 2 5 7-9, a = all, Enter = cancel): " ans || ans=""
+    [ -n "$ans" ] || { note "Cancelled."; exit 0; }
+    [[ "$ans" =~ ^[[:space:]]*[Aa]([Ll][Ll])?[[:space:]]*$ ]] && ans="1-$n"
+    PICKED=(); seen=(); ok=1
+    for tok in ${ans//,/ }; do
+      if [[ "$tok" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+        a=$((10#${BASH_REMATCH[1]})) b=$((10#${BASH_REMATCH[2]}))
+      elif [[ "$tok" =~ ^[0-9]+$ ]]; then
+        a=$((10#$tok)) b=$a
+      else
+        ok=0; break
+      fi
+      if [ "$a" -lt 1 ] || [ "$b" -gt "$n" ] || [ "$a" -gt "$b" ]; then ok=0; break; fi
+      for ((i = a; i <= b; i++)); do
+        [ -n "${seen[$i]:-}" ] && continue
+        seen[$i]=1; PICKED+=("$((i - 1))")
+      done
+    done
+    [ "$ok" = 1 ] && [ ${#PICKED[@]} -gt 0 ] && return 0
+    warn "Use numbers from the list (1-$n), like: 2 5 7-9"
+  done
+}
+
 # transfer_games <up|down> <system> [words...]
-# Shows the matching games, asks, then copies them one by one.
+# Lists the matching games that aren't on the other side yet, lets you pick
+# (or asks once, with -y or a single match), then copies them one by one.
 transfer_games() {
-  local way="$1" sys="$2" from other size name src dst total=0 i skipped=0; shift 2
+  local way="$1" sys="$2" from other size name src dst cmd total=0 i skipped=0 free; shift 2
   local -a names=() sizes=()
   declare -A there=()
+  PICKED=()
   if [ "$way" = down ]; then from=nas other=local; else from=local other=nas; fi
-  # files already on the other side are left out (folders are always checked,
+  # files already on the other side are left out (folders are always offered,
   # since they may be incomplete there)
   while IFS=$'\t' read -r size name; do there["$name"]=1; done < <(entries "$other" "$sys")
   while IFS=$'\t' read -r size name; do
@@ -607,22 +642,39 @@ transfer_games() {
     [ "$skipped" -gt 0 ] && { msg "All $skipped match(es) are already there."; return 0; }
     die "Nothing in $sys matches \"$*\""
   fi
-  if [ "$way" = down ]; then msg "Download to $ROMS_DIR/$sys:"; else msg "Upload to $GAMES_SHARE_PATH/$sys:"; fi
+  if [ "$way" = down ]; then msg "$sys games not on this machine yet:"; else msg "$sys games not on the NAS yet:"; fi
   for i in "${!names[@]}"; do
-    printf '    %7s  %s\n' "$(human "${sizes[i]:-0}")" "${names[i]%/}"
-    total=$((total + ${sizes[i]:-0}))
+    printf '    %3d) %7s  %s\n' "$((i + 1))" "$(human "${sizes[i]:-0}")" "${names[i]%/}"
   done
   [ "$skipped" -gt 0 ] && note "($skipped more already there)"
-  confirm "Copy ${#names[@]} item(s), $(human "$total") in total?"
 
-  for name in "${names[@]}"; do
+  if [ ${#names[@]} -gt 1 ] && [ "$YES" != 1 ] && [ -t 0 ]; then
+    pick "${#names[@]}"
+    for i in "${PICKED[@]}"; do total=$((total + ${sizes[i]:-0})); done
+  else
+    PICKED=("${!names[@]}")
+    for i in "${PICKED[@]}"; do total=$((total + ${sizes[i]:-0})); done
+    confirm "Copy ${#PICKED[@]} item(s), $(human "$total") in total?"
+  fi
+
+  if [ "$way" = down ] && [ ${#DRY[@]} -eq 0 ]; then
+    free="$(df -B1 --output=avail "$ROMS_DIR" 2>/dev/null | tail -n 1 | tr -d ' ')"
+    if [[ "$free" =~ ^[0-9]+$ ]] && [ "$total" -gt "$free" ]; then
+      die "Not enough space: that's $(human "$total") but only $(human "$free") is free on $ROMS_DIR"
+    fi
+  fi
+  msg "Copying ${#PICKED[@]} item(s), $(human "$total")"
+
+  for i in "${PICKED[@]}"; do
+    name="${names[i]}"
     if [ "$way" = down ]; then
       src="$REMOTE:$GAMES_SHARE_PATH/$sys/${name%/}" dst="$ROMS_DIR/$sys/${name%/}"
     else
       src="$ROMS_DIR/$sys/${name%/}" dst="$REMOTE:$GAMES_SHARE_PATH/$sys/${name%/}"
     fi
-    if [[ "$name" == */ ]]; then i=copy; else i=copyto; fi
-    if ! rc "$i" "$src" "$dst" --ignore-existing --skip-links "${PROGRESS[@]}" "${DRY[@]}"; then
+    note "${name%/}"
+    if [[ "$name" == */ ]]; then cmd=copy; else cmd=copyto; fi
+    if ! rc "$cmd" "$src" "$dst" --ignore-existing --skip-links "${PROGRESS[@]}" "${DRY[@]}"; then
       warn "problem with ${name%/}"
       FAILS=$((FAILS + 1))
     fi
@@ -660,7 +712,9 @@ games_pull() {
   roms_dir_or_die download
   rc lsf --max-depth 1 "$REMOTE:$GAMES_SHARE_PATH/$sys" >/dev/null 2>&1 \
     || die "No $sys folder on the NAS - see: savesync games list"
-  if [ $# -eq 1 ]; then
+  if [ $# -eq 1 ] && [ "$YES" != 1 ] && [ -t 0 ]; then
+    transfer_games down "$sys"              # pick from the whole system
+  elif [ $# -eq 1 ]; then
     size="$(entry_size nas "$GAMES_SHARE_PATH/$sys" -1)"
     msg "Downloading every $sys game  ($GAMES_SHARE_PATH/$sys -> $ROMS_DIR/$sys)"
     confirm "That's up to $(human "${size:-0}") (games already here are skipped). Go ahead?"
