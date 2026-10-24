@@ -38,23 +38,104 @@ $ savesync games pull wii
 - [rclone](https://rclone.org) 1.60 or newer. If it isn't installed, savesync downloads it into `~/.local/bin` on first run. No root needed.
 - A NAS or server reachable over **SMB, SFTP or WebDAV**, or any **folder** on the machine (an NFS/sshfs mount, a USB drive, a Syncthing folder...)
 
-## Install
+## Quick start
+
+1. [Prepare your NAS](#preparing-your-nas): a share and a user that can write to it.
+2. [Install](#install) savesync on each machine.
+3. Run `savesync setup` on each machine.
+4. Preview with `savesync pull -n`, then `savesync push` / `savesync pull` for real.
+
+## Preparing your NAS
+
+savesync needs one place on the NAS for saves and BIOS files, and optionally one for ROMs, plus a user account that can read and write both. Any folder layout works. A simple, tidy one is:
+
+- a share called **`emudeck`** for saves, states and BIOS (small: usually well under 1 GB)
+- a share called **`Games`** for ROMs (as big as your library)
+
+savesync creates the folders inside a share by itself. It can't create an SMB *share*, so make those on the NAS first. It's also worth giving the NAS a fixed IP address (a DHCP reservation in your router), so the address you enter in setup keeps working.
+
+### SMB (most NASes and Windows)
+
+Create a user (e.g. `steamdeck`), create the share(s), and give that user read/write access:
+
+- **TrueNAS SCALE:** *Credentials → Local Users → Add*. Then *Datasets → Add Dataset* (preset **SMB**), and *Shares → Windows (SMB) Shares → Add* for that dataset. Give the user Modify/Full Control in the dataset's permissions (ACL).
+- **Synology DSM:** *Control Panel → User & Group → Create*, *Control Panel → Shared Folder → Create*, then tick Read/Write for the user. Make sure *Control Panel → File Services → SMB* is enabled.
+- **Unraid:** *Users → Add User*, *Shares → Add Share*, then under the share's *SMB Security Settings* set Export to Yes, Security to Private, and the user to Read/Write.
+- **Windows:** right-click a folder → *Properties → Sharing → Advanced Sharing*, tick *Share this folder*, and under *Permissions* allow Change for your account.
+
+In setup, pick **1 (SMB)** and enter the NAS's IP address, the user and the password. The folder `emudeck` means the `emudeck` share. If you'd rather use one existing share (say `data`), enter `data/emudeck` and `data/Games`.
+
+savesync speaks SMB2/SMB3. Very old devices that only offer SMB1 need SMB2 turned on.
+
+### SFTP / SSH
+
+Any NAS or Linux box with SSH enabled works, with no shares needed. Paths are relative to the user's home folder unless they start with `/` (e.g. `/mnt/tank/emudeck`). Setup takes a password, or press Enter to use your SSH key (`~/.ssh/id_ed25519` is picked up automatically) or ssh-agent.
+
+### WebDAV (Nextcloud, ownCloud, Synology/QNAP WebDAV)
+
+Pick **3** and paste the WebDAV address. For Nextcloud that's `https://your.server/remote.php/dav/files/USERNAME`. Use an app password if you have two-factor login turned on.
+
+### NFS, sshfs, USB drives, Syncthing
+
+Mount it the normal way, then pick **4 (local folder)** in setup and give the mount point (e.g. `/mnt/nas`). savesync then treats that folder as the NAS. Example NFS mount:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/AlecLienhard/savesync/main/savesync.sh
-bash savesync.sh install      # copies itself to ~/.local/bin/savesync
-savesync setup
+sudo mount -t nfs 192.168.0.31:/mnt/tank/emudeck-share /mnt/nas
 ```
 
-`install` also adds **SaveSync Push / Pull / Sync** to the application menu on KDE (SteamOS Desktop Mode included). Each one opens a terminal window, so you can sync without typing anything.
+## Install
+
+### Steam Deck
+
+1. Switch to **Desktop Mode** (Steam button → Power → Switch to Desktop).
+2. Open **Konsole** from the application menu and run:
+
+   ```bash
+   curl -fsSLO https://raw.githubusercontent.com/AlecLienhard/savesync/main/savesync.sh
+   bash savesync.sh install
+   savesync setup
+   ```
+
+No sudo password and no system changes are needed. Everything lives in your home folder, and it survives SteamOS updates. An Emulation folder on the microSD card is found automatically.
+
+`install` also adds **SaveSync Push / Pull / Sync** to the application menu. Each one opens a terminal window and runs that command, so you can sync without typing anything.
+
+### Other Linux PCs
+
+The same three commands. On Arch you can `sudo pacman -S rclone` first. Otherwise savesync downloads rclone into `~/.local/bin` by itself.
+
+If `install` says `~/.local/bin isn't on your PATH`, run the line it prints and open a new terminal.
+
+### Updating
+
+Download the new `savesync.sh` and run `bash savesync.sh install` again. Your settings are kept.
 
 ## Setup
 
-Run `savesync setup` once on each machine. It asks:
+Run `savesync setup` once on each machine. Press Enter to keep the value shown in `[brackets]`, so re-running setup later only means changing what's different.
 
-1. **How to reach the NAS:** SMB, SFTP/SSH, WebDAV, or a local folder, plus the address and login.
-2. **Where things go on the NAS:** a folder for saves/states/BIOS (default `emudeck`) and one for ROMs (default `Games`). With SMB the first part of the path is the share name, so `emudeck` means the `emudeck` share and `data/emudeck` means the `emudeck` folder inside the `data` share.
-3. **Your Emulation folder.** It's found automatically for EmuDeck (including on an SD card) and for RetroDECK.
+```text
+==> How do you reach your NAS?
+    1) SMB / Windows share   TrueNAS, Synology, Unraid, QNAP, Windows, Samba
+    2) SFTP / SSH            any machine you can ssh into
+    3) WebDAV                Nextcloud, ownCloud, Synology/QNAP WebDAV
+    4) A local folder        an NFS or sshfs mount, USB drive, Syncthing folder...
+    Choice [1]: 1
+    NAS address (IP or name): 192.168.0.31
+    Username: steamdeck
+    Password:
+==> Folders on the NAS   (Enter = keep the [default])
+    Folder for saves, states and BIOS [emudeck]:
+    Folder for games (ROMs) [Games]:
+==> Connected to 192.168.0.31.
+==> Where are your emulator files on this machine?
+    Found: /home/deck/Emulation
+    Press Enter to use it, or type a different folder.
+    Folder [/home/deck/Emulation]:
+    /home/deck/Emulation  (emudeck layout, syncing: saves)
+```
+
+Use the same NAS folders on every machine so they share saves.
 
 The connection is stored in `~/.config/savesync/rclone.conf` (password obscured, file mode 600). It's separate from EmuDeck's own rclone setup. Your other choices go in `~/.config/savesync/config`. Run `savesync config` to see what's in use and test the connection.
 
@@ -139,6 +220,21 @@ SAVESYNC_ROOT="retroarch"
 ```
 
 For connection options setup doesn't ask about (SMB domain, SFTP host-key checking, ...), edit `~/.config/savesync/rclone.conf`. The remote is called `nas`, and every option from the [rclone docs](https://rclone.org/docs/) works.
+
+## Troubleshooting
+
+| Message or problem | What to do |
+| --- | --- |
+| `Can't reach the NAS (off, asleep, or wrong login?)` | Check the NAS is on and awake, and that its IP hasn't changed. Re-run `savesync setup` to fix the address or password. |
+| `... doesn't exist on the NAS and couldn't be created` | With SMB, the first part of the folder must be an existing share name, and the user needs write access to it. |
+| `problem with ...` or permission errors | The NAS user can read but not write. Give it read/write on the share. |
+| `skipping <emulator>/<folder> (no matching folder here...)` | That emulator hasn't been started on this machine yet. Launch it once, then pull again. |
+| `Emulators look like they're still running` | Quit the game and the emulator (and ES-DE) fully so the save is written, then run again. |
+| Not sure whether the emulator saved | `savesync recent` lists save files changed in the last 24 hours. |
+| Transfers are slow | It's almost always the network. Use 5 GHz Wi-Fi instead of 2.4 GHz, or Ethernet for big game downloads. |
+| A save got overwritten | Copy it back from `~/.local/share/savesync/backups/<time>/` (after a pull) or `.savesync-backups/<time>/` on the NAS (after a push). |
+
+When in doubt, add `-n` to see what would happen without changing anything.
 
 ## Notes and limits
 
