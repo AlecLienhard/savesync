@@ -534,12 +534,37 @@ roms_dir_or_die() {  # roms_dir_or_die <upload|download>
   [ -d "$ROMS_DIR" ] || die "No roms folder at $ROMS_DIR"
 }
 
+term_width() {  # COLUMNS if set, else the real terminal, else 80
+  local w="${COLUMNS:-}"
+  [[ "$w" =~ ^[0-9]+$ ]] || w="$({ stty size < /dev/tty; } 2>/dev/null)"; w="${w##* }"
+  [[ "$w" =~ ^[0-9]+$ ]] || w=80
+  echo "$w"
+}
+
+# Lays out stdin's lines in indented columns that fit the terminal, top to
+# bottom like `ls`. Padded with spaces, so it lines up at any width.
 columns() {
-  if command -v column >/dev/null 2>&1; then
-    column -c "$(( $(tput cols 2>/dev/null || echo 80) - 4 ))" | sed 's/^/    /'
-  else
-    sed 's/^/    /'
-  fi
+  local -a items=()
+  local item cell line w=0 cols rows r c i
+  while IFS= read -r item; do
+    items+=("$item")
+    [ ${#item} -gt "$w" ] && w=${#item}
+  done
+  [ ${#items[@]} -gt 0 ] || return 0
+  w=$((w + 2))
+  cols=$(( ($(term_width) - 4 + 2) / w ))       # the last column needs no gap
+  [ "$cols" -ge 1 ] || cols=1
+  rows=$(( (${#items[@]} + cols - 1) / cols ))
+  for ((r = 0; r < rows; r++)); do
+    line="    "
+    for ((c = 0; c < cols; c++)); do
+      i=$((c * rows + r))
+      [ "$i" -lt ${#items[@]} ] || continue
+      printf -v cell '%-*s' "$w" "${items[i]}"
+      line+="$cell"
+    done
+    printf '%s\n' "${line%"${line##*[! ]}"}"   # without trailing spaces
+  done
 }
 
 games_list() {

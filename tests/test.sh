@@ -100,6 +100,14 @@ check "games uploads ROMs"            test -f "$NAS/Games/gba/Metroid Fusion.gba
 check "games uploads multi-file"      test -f "$NAS/Games/psx/Final Fantasy VII (Disc 1).bin"
 out="$(ss "$PC" games list)"
 check "list shows systems"            has "$out" "gba"
+for i in $(seq -w 1 40); do mkdir -p "$NAS/Games/system$i"; done
+mkdir -p "$NAS/Games/a-much-longer-system-name"
+for width in 40 80 132; do
+  out="$(COLUMNS=$width ss "$PC" games list | sed -n '/Systems on/,/See one/p' | sed '1d;$d')"
+  check "systems fit in $width columns"  test "$(awk '{ if (length > m) m = length } END { print m }' <<< "$out")" -le "$width"
+  check "systems line up at $width"     test "$(grep -c system40 <<< "$out")" -eq 1
+done
+rm -rf "$NAS/Games/system"* "$NAS/Games/a-much-longer-system-name"
 out="$(ss "$PC" games list gba zelda)"
 check "list filters by search"        has "$out" "Minish Cap"
 check "list hides non-matches"        lacks "$out" "Metroid"
